@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { eur } from '../lib/format.js';
 import {
-  searchMarches, aggregate, sampleRecord, resolveNames, resolveCompany,
+  searchMarches, aggregate, sampleRecord, resolveNames, companyCandidates,
   FIELDS, SEARCH_FIELDS, DATASET, OUTLIER,
 } from '../lib/decp.js';
 import ReportButton from '../components/ReportButton.jsx';
@@ -35,10 +35,24 @@ export default function Marches() {
   const [tops, setTops] = useState(null);
   const [names, setNames] = useState({});
   const [interp, setInterp] = useState(null);
+  const [cands, setCands] = useState([]);
+  const [chosen, setChosen] = useState(null);
   const [err, setErr] = useState(null);
   const [loading, setLoading] = useState(false);
   const [schema, setSchema] = useState(null);
   const [sel, setSel] = useState(null);
+  const [copied, setCopied] = useState(null);
+
+  const copy = async (txt, key) => {
+    try { await navigator.clipboard.writeText(txt); }
+    catch {
+      const ta = document.createElement('textarea');
+      ta.value = txt; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); ta.remove();
+    }
+    setCopied(key);
+    setTimeout(() => setCopied(k => (k === key ? null : k)), 1200);
+  };
 
   const run = async (over = {}) => {
     setLoading(true); setErr(null); setSel(null); setInterp(null);
@@ -47,17 +61,20 @@ export default function Marches() {
       excludeOutliers: noOutliers, ...over,
     };
     try {
-      // nom d'entreprise → SIREN si champ acheteur/titulaire
+      // nom d'entreprise → candidats SIREN si champ acheteur/titulaire
       if ((opts.field === 'titulaire' || opts.field === 'acheteur')
           && opts.q && !/^\d{9,14}$/.test(opts.q.trim())) {
-        const c = await resolveCompany(opts.q);
-        if (c) {
-          opts.resolved = c;
-          setInterp(`« ${opts.q} » interprété comme ${c.nom || 'SIREN ' + c.siren} (SIREN ${c.siren})`);
+        const list = over.keepCands ? cands : await companyCandidates(opts.q);
+        if (!over.keepCands) { setCands(list); setChosen(list[0]?.siren ?? null); }
+        const pick = list.find(c => c.siren === (over.chosenSiren ?? (over.keepCands ? chosen : list[0]?.siren)));
+        if (pick) {
+          opts.resolved = pick;
+          setChosen(pick.siren);
+          setInterp(`« ${opts.q} » interprété comme ${pick.nom || 'SIREN ' + pick.siren} (SIREN ${pick.siren}) — si ce n'est pas la bonne entité, cliquez sur un autre candidat ci-dessous.`);
         } else {
           setInterp(`« ${opts.q} » : entreprise introuvable dans l'annuaire — repli sur la recherche plein-texte.`);
         }
-      }
+      } else { setCands([]); setChosen(null); }
       const [res, agg] = await Promise.all([
         searchMarches(opts),
         aggregate(opts).catch(() => null),
@@ -125,7 +142,19 @@ export default function Marches() {
         </div>
       </form>
 
-      {interp && <p className="hint" style={{ marginBottom: 8 }}>⤷ {interp}</p>}
+      {interp && <p className="hint" style={{ marginBottom: 6 }}>⤷ {interp}</p>}
+      {cands.length > 1 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+          {cands.map(c => (
+            <button key={c.siren} className="btn" aria-pressed={chosen === c.siren}
+              style={{ fontSize: 12, padding: '4px 10px' }}
+              title={`SIREN ${c.siren}${c.activite ? ' · ' + c.activite : ''}`}
+              onClick={() => run({ keepCands: true, chosenSiren: c.siren })}>
+              {c.nom} <span style={{ opacity: .6 }}>({c.siren})</span>
+            </button>
+          ))}
+        </div>
+      )}
       {err && (
         <div className="warnbox">
           <strong>L’API n’a pas répondu comme attendu</strong> ({err}).{' '}
@@ -162,16 +191,40 @@ export default function Marches() {
                   {get(r, 'dateNotification') ? ` · notifié ${get(r, 'dateNotification')}` : ''}
                   {get(r, 'procedure') ? ` · ${get(r, 'procedure')}` : ''}
                 </div>
-                {sel === i && (
-                  <table className="data" style={{ marginTop: 10 }}>
-                    <tbody>
-                      {Object.entries(r).filter(([, v]) => v != null && v !== '' && v !== 'CDL').map(([k, v]) => (
-                        <tr key={k}><td style={{ color: 'var(--muted)' }}>{k}</td>
-                          <td style={{ textAlign: 'left', wordBreak: 'break-word' }}>{typeof v === 'object' ? JSON.stringify(v) : String(v)}</td></tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
+                {sel === i && (() => {
+                  const entries = Object.entries(r).filter(([, v]) => v != null && v !== '' && v !== 'CDL');
+                  return (
+                    <div onClick={e => e.stopPropagation()} style={{ marginTop: 10, cursor: 'auto' }}>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
+                        <button className="btn" style={{ fontSize: 12, padding: '4px 10px' }}
+                          onClick={() => copy(JSON.stringify(Object.fromEntries(entries), null, 2), `all${i}`)}>
+                          {copied === `all${i}` ? 'Copié ✓' : 'Copier tout (JSON)'}
+                        </button>
+                      </div>
+                      <table className="data">
+                        <tbody>
+                          {entries.map(([k, v]) => {
+                            const txt = typeof v === 'object' ? JSON.stringify(v) : String(v);
+                            return (
+                              <tr key={k}>
+                                <td style={{ color: 'var(--muted)' }}>{k}</td>
+                                <td style={{ textAlign: 'left', wordBreak: 'break-word', userSelect: 'text' }}>{txt}</td>
+                                <td style={{ width: 34 }}>
+                                  <button title="Copier cette valeur"
+                                    onClick={() => copy(txt, `${i}:${k}`)}
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer',
+                                      color: copied === `${i}:${k}` ? 'var(--accent)' : 'var(--muted)', fontSize: 13, padding: 2 }}>
+                                    {copied === `${i}:${k}` ? '✓' : '⧉'}
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
               </div>
             ))}
           </div>

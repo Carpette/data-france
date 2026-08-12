@@ -48,15 +48,17 @@ export function buildWhere({ q = '', field = 'all', resolved = null,
   const w = [];
   const term = esc(q);
   if (term) {
-    if (field === 'objet') w.push(`${FIELDS.objet} like "%${term}%"`);
-    else if (field === 'procedure') w.push(`${FIELDS.procedure} like "%${term}%"`);
-    else if (field === 'cpv') w.push(`${FIELDS.codeCPV} like "${term}%"`);
-    else if (field === 'lieu') w.push(`${FIELDS.lieuCode} like "${term}%"`);
+    // NB : en ODSQL (Opendatasoft), le joker de `like` est `*` — pas `%`.
+    if (field === 'objet') w.push(`${FIELDS.objet} like "${term}"`);
+    else if (field === 'procedure') w.push(`${FIELDS.procedure} like "${term}"`);
+    else if (field === 'cpv') w.push(`${FIELDS.codeCPV} like "${term}*"`);
+    else if (field === 'lieu') w.push(`${FIELDS.lieuCode} like "${term}*"`);
     else if (field === 'titulaire' || field === 'acheteur') {
       const id = resolved?.siren || (/^\d{9,14}$/.test(term) ? term : null);
       if (id) {
-        if (field === 'acheteur') w.push(`${FIELDS.acheteurId} like "${id}%"`);
-        else w.push(`(${FIELDS.titulaireId} like "${id}%" OR ${FIELDS.titulaireId2} like "${id}%" OR ${FIELDS.titulaireId3} like "${id}%")`);
+        const pat = `${id}*`;
+        if (field === 'acheteur') w.push(`${FIELDS.acheteurId} like "${pat}"`);
+        else w.push(`(${FIELDS.titulaireId} like "${pat}" OR ${FIELDS.titulaireId2} like "${pat}" OR ${FIELDS.titulaireId3} like "${pat}")`);
       } else {
         w.push(`search("${term}")`); // repli : nom non résolu
       }
@@ -110,17 +112,44 @@ export function sampleRecord() {
 /* ---------- API Recherche d'entreprises (DINUM) ---------- */
 const nameCache = new Map();
 
+/**
+ * Nom → liste de candidats {siren, nom, activite}, pour laisser l'utilisateur
+ * choisir (la « meilleure correspondance » automatique se trompe : « cap gemini »
+ * renvoie un comité d'entreprise avant CAPGEMINI). Si le nom contient des
+ * espaces, la variante collée est aussi interrogée et fusionnée.
+ */
+export async function companyCandidates(query, limit = 6) {
+  const term = esc(query);
+  if (!term || /^\d{9,14}$/.test(term)) return [];
+  const variants = [term];
+  if (term.includes(' ')) variants.push(term.replace(/\s+/g, ''));
+  const seen = new Set(); const out = [];
+  for (const v of variants) {
+    try {
+      const r = await fetch(`https://recherche-entreprises.api.gouv.fr/search?q=${encodeURIComponent(v)}&page=1&per_page=${limit}`);
+      if (!r.ok) continue;
+      for (const e of (await r.json()).results || []) {
+        if (seen.has(e.siren)) continue;
+        seen.add(e.siren);
+        out.push({
+          siren: e.siren,
+          nom: e.nom_raison_sociale || e.nom_complet,
+          activite: e.libelle_activite_principale || e.activite_principale || '',
+        });
+      }
+    } catch { /* variante suivante */ }
+  }
+  // les sociétés à gros effectif d'abord : heuristique simple, l'API classe déjà par pertinence
+  return out.slice(0, limit * 2);
+}
+
 /** Nom ou identifiant → {siren, nom} (meilleure correspondance), ou null. */
 export async function resolveCompany(query) {
   const term = esc(query);
   if (!term) return null;
   if (/^\d{9,14}$/.test(term)) return { siren: term.slice(0, 9), nom: null };
-  try {
-    const r = await fetch(`https://recherche-entreprises.api.gouv.fr/search?q=${encodeURIComponent(term)}&page=1&per_page=1`);
-    if (!r.ok) return null;
-    const e = (await r.json()).results?.[0];
-    return e ? { siren: e.siren, nom: e.nom_raison_sociale || e.nom_complet } : null;
-  } catch { return null; }
+  const c = await companyCandidates(term, 1);
+  return c[0] ? { siren: c[0].siren, nom: c[0].nom } : null;
 }
 
 /** Résout une liste de SIRET/SIREN en noms, avec cache et rate-limit. */
