@@ -1,9 +1,8 @@
 /**
- * Accès à la base DECP via l'API Opendatasoft de data.economie.gouv.fr.
- * Schéma validé le 11/08/2026 sur un enregistrement réel : le dataset ne
- * contient PAS de raisons sociales, seulement des identifiants SIRET
- * (acheteur_id, titulaire_id_1..3). Les noms sont résolus à la volée via
- * l'API publique Recherche d'entreprises (annuaire-entreprises / DINUM).
+ * Accès à la base DECP via l'API Opendatasoft Explore v2.1 de data.economie.gouv.fr.
+ * Schéma validé le 11/08/2026 : identifiants SIRET uniquement (acheteur_id,
+ * titulaire_id_1..3), pas de raisons sociales — résolues via l'API Recherche
+ * d'entreprises (DINUM), qui sert aussi à traduire un NOM saisi en SIREN.
  */
 export const BASE = 'https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets';
 export const DATASET = 'decp-2022-marches-valides';
@@ -14,6 +13,8 @@ export const FIELDS = {
   dateNotification: 'datenotification',
   acheteurId: 'acheteur_id',
   titulaireId: 'titulaire_id_1',
+  titulaireId2: 'titulaire_id_2',
+  titulaireId3: 'titulaire_id_3',
   procedure: 'procedure',
   nature: 'nature',
   codeCPV: 'codecpv',
@@ -22,35 +23,83 @@ export const FIELDS = {
   source: 'source',
 };
 
+/** Champs proposés dans le sélecteur de recherche. */
+export const SEARCH_FIELDS = [
+  { key: 'all', label: 'Tous les champs' },
+  { key: 'objet', label: 'Objet du marché' },
+  { key: 'titulaire', label: 'Titulaire (nom ou SIREN/SIRET)' },
+  { key: 'acheteur', label: 'Acheteur (nom ou SIREN/SIRET)' },
+  { key: 'cpv', label: 'Code CPV (préfixe)' },
+  { key: 'lieu', label: 'Lieu d’exécution (code commune/CP)' },
+  { key: 'procedure', label: 'Procédure' },
+];
+
+export const OUTLIER = 1e9;
+
+const esc = s => String(s).replace(/"/g, '').trim();
+
+/**
+ * Construit la clause where ODSQL.
+ * `resolved` : {siren} quand un nom d'entreprise a été traduit en SIREN.
+ */
+export function buildWhere({ q = '', field = 'all', resolved = null,
+  montantMin = null, montantMax = null, yearFrom = null, yearTo = null,
+  excludeOutliers = true }) {
+  const w = [];
+  const term = esc(q);
+  if (term) {
+    if (field === 'objet') w.push(`${FIELDS.objet} like "%${term}%"`);
+    else if (field === 'procedure') w.push(`${FIELDS.procedure} like "%${term}%"`);
+    else if (field === 'cpv') w.push(`${FIELDS.codeCPV} like "${term}%"`);
+    else if (field === 'lieu') w.push(`${FIELDS.lieuCode} like "${term}%"`);
+    else if (field === 'titulaire' || field === 'acheteur') {
+      const id = resolved?.siren || (/^\d{9,14}$/.test(term) ? term : null);
+      if (id) {
+        if (field === 'acheteur') w.push(`${FIELDS.acheteurId} like "${id}%"`);
+        else w.push(`(${FIELDS.titulaireId} like "${id}%" OR ${FIELDS.titulaireId2} like "${id}%" OR ${FIELDS.titulaireId3} like "${id}%")`);
+      } else {
+        w.push(`search("${term}")`); // repli : nom non résolu
+      }
+    } else w.push(`search("${term}")`);
+  }
+  if (excludeOutliers) w.push(`${FIELDS.montant} < ${OUTLIER}`);
+  if (montantMin) w.push(`${FIELDS.montant} >= ${Number(montantMin)}`);
+  if (montantMax) w.push(`${FIELDS.montant} <= ${Number(montantMax)}`);
+  if (yearFrom) w.push(`${FIELDS.dateNotification} >= date'${Number(yearFrom)}-01-01'`);
+  if (yearTo) w.push(`${FIELDS.dateNotification} <= date'${Number(yearTo)}-12-31'`);
+  return w.join(' AND ');
+}
+
 async function ods(path, params) {
   const url = `${BASE}/${DATASET}/${path}?${new URLSearchParams(params)}`;
   const r = await fetch(url);
-  if (!r.ok) throw new Error(`API ${r.status} — ${url}`);
+  if (!r.ok) {
+    let detail = '';
+    try { detail = (await r.json()).message || ''; } catch { /* — */ }
+    throw new Error(`API ${r.status}${detail ? ` — ${detail}` : ''}`);
+  }
   return r.json();
 }
 
-/** Montants ≥ 1 Md€ : quasi toujours des erreurs de saisie (base déclarative). */
-export const OUTLIER = 1e9;
-
-export function searchMarches({ q = '', orderBy = `${FIELDS.montant} desc`, limit = 20, offset = 0, excludeOutliers = true }) {
-  const params = { limit, offset, order_by: orderBy };
-  const w = [];
-  if (q) w.push(`search("${q.replace(/"/g, '')}")`);
-  if (excludeOutliers) w.push(`${FIELDS.montant} < ${OUTLIER}`);
-  if (w.length) params.where = w.join(' AND ');
+export function searchMarches(opts) {
+  const params = {
+    limit: opts.limit ?? 20, offset: opts.offset ?? 0,
+    order_by: opts.orderBy ?? `${FIELDS.montant} desc`,
+  };
+  const where = buildWhere(opts);
+  if (where) params.where = where;
   return ods('records', params);
 }
 
-export function aggregate({ groupBy = FIELDS.titulaireId, q = '', limit = 12, excludeOutliers = true }) {
+export function aggregate(opts) {
+  const groupBy = opts.groupBy ?? FIELDS.titulaireId;
   const params = {
     group_by: groupBy,
     select: `${groupBy}, count(*) as n, sum(${FIELDS.montant}) as total`,
-    order_by: 'total desc', limit,
+    order_by: 'total desc', limit: opts.limit ?? 12,
   };
-  const w = [];
-  if (q) w.push(`search("${q.replace(/"/g, '')}")`);
-  if (excludeOutliers) w.push(`${FIELDS.montant} < ${OUTLIER}`);
-  if (w.length) params.where = w.join(' AND ');
+  const where = buildWhere(opts);
+  if (where) params.where = where;
   return ods('records', params);
 }
 
@@ -58,21 +107,32 @@ export function sampleRecord() {
   return ods('records', { limit: 1 });
 }
 
-/* ---------- Résolution SIRET/SIREN → raison sociale ---------- */
+/* ---------- API Recherche d'entreprises (DINUM) ---------- */
 const nameCache = new Map();
 
-/** Résout une liste de SIRET en noms, avec cache et limitation de débit. */
+/** Nom ou identifiant → {siren, nom} (meilleure correspondance), ou null. */
+export async function resolveCompany(query) {
+  const term = esc(query);
+  if (!term) return null;
+  if (/^\d{9,14}$/.test(term)) return { siren: term.slice(0, 9), nom: null };
+  try {
+    const r = await fetch(`https://recherche-entreprises.api.gouv.fr/search?q=${encodeURIComponent(term)}&page=1&per_page=1`);
+    if (!r.ok) return null;
+    const e = (await r.json()).results?.[0];
+    return e ? { siren: e.siren, nom: e.nom_raison_sociale || e.nom_complet } : null;
+  } catch { return null; }
+}
+
+/** Résout une liste de SIRET/SIREN en noms, avec cache et rate-limit. */
 export async function resolveNames(ids) {
   const uniq = [...new Set(ids.filter(id => id && /^\d{9,14}$/.test(String(id))))]
     .filter(id => !nameCache.has(id));
-  // l'API accepte q=<siret> ; ~7 req/s max → petits lots séquentiels
   for (let i = 0; i < uniq.length; i += 5) {
     await Promise.all(uniq.slice(i, i + 5).map(async id => {
       try {
         const r = await fetch(`https://recherche-entreprises.api.gouv.fr/search?q=${id}&page=1&per_page=1`);
         if (!r.ok) throw new Error(r.status);
-        const j = await r.json();
-        const e = j.results?.[0];
+        const e = (await r.json()).results?.[0];
         nameCache.set(id, e ? (e.nom_raison_sociale || e.nom_complet || null) : null);
       } catch { nameCache.set(id, null); }
     }));

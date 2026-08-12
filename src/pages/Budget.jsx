@@ -233,7 +233,7 @@ function Diff({ yA, yB }) {
           {rows.map(r => {
             const w = Math.abs(r.x) / range * 100, left = r.x >= 0 ? z : z - w;
             return (
-              <div key={r.c} style={{ display: 'grid', gridTemplateColumns: '210px 1fr 132px', gap: 12, alignItems: 'center', fontSize: 13 }}>
+              <div key={r.c} style={{ display: 'grid', gridTemplateColumns: 'minmax(120px,210px) minmax(0,1fr) 118px', gap: 12, alignItems: 'center', fontSize: 13 }}>
                 <div title={r.l} onClick={() => r.drill && setDpath(p => [...p, r.c])}
                   style={{
                     textAlign: 'right', color: 'var(--ink-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -245,8 +245,9 @@ function Diff({ yA, yB }) {
                   <div style={{ position: 'absolute', top: 0, bottom: 0, borderRadius: 4, left: `${left}%`, width: `${w}%`, background: r.x < 0 ? 'var(--neg)' : 'var(--accent)' }} />
                   {mode === 'nominal' && <div style={{ position: 'absolute', top: -4, bottom: -4, width: 2, background: 'var(--warn)', left: `${z + infl / range * 100}%` }} />}
                 </div>
-                <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                  {r.lab} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>({r.sub})</span>
+                <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600, lineHeight: 1.3 }}>
+                  {r.lab}
+                  <span style={{ display: 'block', color: 'var(--muted)', fontWeight: 400, fontSize: 11.5 }}>{r.sub}</span>
                 </div>
               </div>
             );

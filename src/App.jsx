@@ -4,6 +4,7 @@ import Home from './pages/Home.jsx';
 import Canicule from './pages/Canicule.jsx';
 import Budget from './pages/Budget.jsx';
 import Marches from './pages/Marches.jsx';
+import ReportButton from './components/ReportButton.jsx';
 
 const linkStyle = ({ isActive }) => ({
   padding: '8px 14px', borderRadius: 9, textDecoration: 'none', fontSize: 13.5,
@@ -26,10 +27,13 @@ export default function App() {
           <NavLink to="/budget" style={linkStyle}>Dépense publique</NavLink>
           <NavLink to="/marches" style={linkStyle}>Marchés publics</NavLink>
         </nav>
-        <button className="btn" style={{ marginLeft: 'auto' }}
-          onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')}>
-          {theme === 'light' ? 'Mode sombre' : 'Mode clair'}
-        </button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          <ReportButton />
+          <button className="btn"
+            onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')}>
+            {theme === 'light' ? 'Mode sombre' : 'Mode clair'}
+          </button>
+        </div>
       </header>
       <Routes>
         <Route path="/" element={<Home />} />
@@ -41,6 +45,8 @@ export default function App() {
         Données publiques : INSEE (comptes nationaux, COFOG), Santé publique France (ODISSE),
         ODRÉ, data.economie.gouv.fr (DECP). Ce site est un observatoire indépendant ;
         les précautions d'interprétation propres à chaque jeu de données sont rappelées sur chaque page.
+        Une erreur ? <a href="https://github.com/Carpette/data-france/issues/new/choose" target="_blank" rel="noopener">Ouvrez un ticket</a> —
+        le bouton « Signaler une erreur » pré-remplit le contexte pour vous.
       </footer>
     </div>
   );

@@ -1,0 +1,21 @@
+name: Erreur de données
+description: Un chiffre faux, un marché aberrant, un département incohérent…
+title: "[Données] "
+labels: [donnees]
+body:
+  - type: input
+    id: page
+    attributes:
+      label: Page concernée
+      placeholder: ex. Marchés publics, Dépense publique → Comparaison 2016 → 2024
+    validations: { required: true }
+  - type: textarea
+    id: constat
+    attributes:
+      label: Ce qui semble faux
+      description: Le chiffre affiché, et ce que vous attendiez (avec votre source si possible).
+    validations: { required: true }
+  - type: input
+    id: contexte
+    attributes:
+      label: Contexte (recherche, filtres, année sélectionnée…)

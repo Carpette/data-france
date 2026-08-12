@@ -1,0 +1,15 @@
+name: Bug du site
+description: Affichage cassé, bouton mort, page blanche…
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: textarea
+    id: repro
+    attributes:
+      label: Comment reproduire
+      description: Étapes, page, navigateur. Une capture d'écran aide beaucoup.
+    validations: { required: true }
+  - type: input
+    id: env
+    attributes:
+      label: Navigateur / appareil
