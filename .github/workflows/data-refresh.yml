@@ -1,0 +1,22 @@
+name: Refresh embedded datasets
+on:
+  schedule:
+    - cron: '17 5 3 * *'   # le 3 de chaque mois, 05:17 UTC
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node scripts/build-data.mjs
+      - name: Commit if changed
+        run: |
+          git config user.name "data-refresh[bot]"
+          git config user.email "actions@github.com"
+          git add -A src/data
+          git diff --cached --quiet || git commit -m "chore(data): rafraîchissement mensuel des données canicule"
+          git push
