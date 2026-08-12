@@ -54,3 +54,61 @@ table.data td{text-align:right;padding:7px 8px;border-bottom:1px solid var(--gri
 table.data th:first-child,table.data td:first-child{text-align:left}
 .pos{color:#a04010}.negv{color:#3a2f86}
 [data-theme="dark"] .pos{color:#ec8f45}[data-theme="dark"] .negv{color:#9085e9}
+
+
+/* ═══════════ 🦄 MODE LICORNE (Konami : ↑↑↓↓←→←→BA) ═══════════ */
+[data-unicorn="true"]{
+  --page:#fdf3fb; --surface:#ffffff; --surface-2:#ffe9f8;
+  --ink:#4a1d5e; --ink-2:#7a4b8f; --muted:#b487c9;
+  --hair:rgba(212,105,201,.35); --grid:#f3d4ee;
+  --accent:#e84fd0; --warn:#ff9331; --neg:#7b5cff;
+}
+[data-unicorn="true"] body{
+  background-image:
+    radial-gradient(circle at 12% 8%, rgba(255,182,255,.5), transparent 42%),
+    radial-gradient(circle at 88% 16%, rgba(160,220,255,.5), transparent 45%),
+    radial-gradient(circle at 55% 95%, rgba(255,240,170,.5), transparent 42%);
+  background-attachment: fixed;
+  cursor: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'><text y='22' font-size='22'>🦄</text></svg>") 4 4, auto;
+}
+[data-unicorn="true"] .brand{
+  background: linear-gradient(90deg,#e84fd0,#7b5cff,#31a8ff,#2fd471,#ffc531,#ff7a31,#e84fd0);
+  background-size: 300% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent !important;
+  animation: unicorn-shimmer 4s linear infinite;
+}
+[data-unicorn="true"] h1{
+  background: linear-gradient(90deg,#e84fd0,#7b5cff,#31a8ff);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+[data-unicorn="true"] .card{ box-shadow: 0 4px 22px rgba(232,79,208,.14); }
+[data-unicorn="true"] .tab[aria-selected="true"]{ border-bottom-color:#e84fd0; }
+@keyframes unicorn-shimmer{ to{ background-position: 300% 0; } }
+.unicorn-sky{ position: fixed; inset: 0; pointer-events: none; z-index: 99; overflow: hidden; }
+.unicorn-sky span{
+  position: absolute; bottom: -50px; font-size: 30px;
+  animation: unicorn-rise 11s linear infinite;
+}
+@keyframes unicorn-rise{
+  0%{ transform: translateY(0) rotate(-8deg); opacity: 0; }
+  8%{ opacity: .9; }
+  92%{ opacity: .9; }
+  100%{ transform: translateY(-110vh) rotate(10deg); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce){
+  .unicorn-sky span, [data-unicorn="true"] .brand{ animation: none; }
+}
+
+/* le gif invité qui traverse l'écran de temps en temps */
+.unicorn-cameo{
+  position: fixed; bottom: 6vh; left: -420px; width: 280px; z-index: 98;
+  pointer-events: none; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.3);
+  transform: rotate(-3deg);
+  animation: unicorn-cameo 26s linear infinite;
+}
+@keyframes unicorn-cameo{
+  0%   { left: -420px; }
+  38%  { left: 105vw; }
+  100% { left: 105vw; }   /* pause hors écran avant le passage suivant */
+}
+@media (prefers-reduced-motion: reduce){ .unicorn-cameo{ display: none; } }
