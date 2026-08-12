@@ -51,4 +51,4 @@ node scripts/build-data.mjs   # rafraîchit les JSON canicule (réseau requis)
 
 Les xlsx INSEE (T_3301/T_3307) et les CSV ODISSE/ODRÉ d'origine ne sont pas
 versionnés ; seuls les agrégats JSON le sont. Pour régénérer depuis les
-sources : voir `scripts/build-data.mjs` et l'historique de la session Cowork.
+sources : voir `scripts/build-data.mjs`.
