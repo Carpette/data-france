@@ -4,6 +4,8 @@ import Home from './pages/Home.jsx';
 import Canicule from './pages/Canicule.jsx';
 import Budget from './pages/Budget.jsx';
 import Marches from './pages/Marches.jsx';
+import Pollueurs from './pages/Pollueurs.jsx';
+import Aviation from './pages/Aviation.jsx';
 import ReportButton from './components/ReportButton.jsx';
 
 const linkStyle = ({ isActive }) => ({
@@ -50,6 +52,8 @@ export default function App() {
           <NavLink to="/canicule" style={linkStyle}>Canicule</NavLink>
           <NavLink to="/budget" style={linkStyle}>Dépense publique</NavLink>
           <NavLink to="/marches" style={linkStyle}>Marchés publics</NavLink>
+          <NavLink to="/pollueurs" style={linkStyle}>Pollueurs</NavLink>
+          <NavLink to="/aviation" style={linkStyle}>Jets privés</NavLink>
         </nav>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
           <ReportButton />
@@ -64,6 +68,8 @@ export default function App() {
         <Route path="/canicule" element={<Canicule />} />
         <Route path="/budget" element={<Budget />} />
         <Route path="/marches" element={<Marches />} />
+        <Route path="/pollueurs" element={<Pollueurs />} />
+        <Route path="/aviation" element={<Aviation />} />
       </Routes>
       {toast && (
         <div style={{
@@ -78,7 +84,7 @@ export default function App() {
         src={`${import.meta.env.BASE_URL}licorne.gif`} />}
       <footer style={{ marginTop: 40, paddingTop: 16, borderTop: '1px solid var(--hair)', color: 'var(--muted)', fontSize: 12, lineHeight: 1.7 }}>
         Données publiques : INSEE (comptes nationaux, COFOG), Santé publique France (ODISSE),
-        ODRÉ, data.economie.gouv.fr (DECP). Ce site est un observatoire indépendant ;
+        ODRÉ, data.economie.gouv.fr (DECP), Climate TRACE, réseau ADS-B communautaire (adsb.lol). Ce site est un observatoire indépendant ;
         les précautions d'interprétation propres à chaque jeu de données sont rappelées sur chaque page.
         Une erreur ? <a href="https://github.com/Carpette/data-france/issues/new/choose" target="_blank" rel="noopener">Ouvrez un ticket</a> —
         le bouton « Signaler une erreur » pré-remplit le contexte pour vous.

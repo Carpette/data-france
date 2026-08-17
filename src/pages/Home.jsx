@@ -10,6 +10,12 @@ const cards = [
   { to: '/marches', title: 'Marchés publics — qui est payé ?',
     desc: 'Le niveau le plus fin public : chaque marché attribué, son acheteur, son titulaire et son montant, en interrogeant les données officielles en direct.',
     src: 'DECP · data.economie.gouv.fr' },
+  { to: '/pollueurs', title: 'Les plus gros pollueurs',
+    desc: 'Émissions estimées installation par installation, dans le monde entier : centrales, mines, usines, champs pétroliers — avec opérateur et localisation.',
+    src: 'Climate TRACE (satellites + registres)' },
+  { to: '/aviation', title: 'Jets privés en vol',
+    desc: 'Photographie temps réel des jets d’affaires captés par le réseau ADS-B, immatriculations et liens vers les registres publics. L’outil, pas l’identification.',
+    src: 'adsb.lol · registres FAA/DGAC/CAA' },
 ];
 
 export default function Home() {
