@@ -33,7 +33,7 @@ export default function WorldMap({ markers, height = 440 }) {
         iconSize: [24, 24], iconAnchor: [12, 12],
       });
       L.marker([m.lat, m.lon], { icon }).addTo(lg)
-        .bindTooltip(m.html, { direction: 'top', offset: [0, -12], opacity: 0.97 });
+        .bindTooltip(m.html, { direction: 'auto', offset: [14, 0], opacity: 0.97 });
     });
     if (pts.length) mapRef.current.fitBounds(pts, { padding: [30, 30], maxZoom: 6 });
   }, [markers]);
