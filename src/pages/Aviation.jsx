@@ -266,13 +266,22 @@ export default function Aviation() {
       })()}
 
       {tab === 'stats' && (() => {
-        const top = HIST.top || [];
+        /* Statistiques sur TOUS les appareils captés sur 30 j (recalculées depuis le
+           journal quotidien), pas seulement le top 100 — qui reste un simple classement. */
+        const agg = {};
+        Object.values(HIST.days || {}).forEach(day => {
+          Object.entries(day).forEach(([reg, info]) => {
+            agg[reg] = agg[reg] || { reg, days: 0, snaps: 0, type: info.t };
+            agg[reg].days += 1; agg[reg].snaps += info.n || 1;
+          });
+        });
+        const fleet = Object.keys(agg).length ? Object.values(agg) : (HIST.top || []);
         const hoursOf = t => (t.snaps ?? t.days) * SNAP_H;
         const co2Of = t => hoursOf(t) * (CO2_RATE[t.type] || 2.5);
-        const totH = top.reduce((a, t) => a + hoursOf(t), 0);
-        const totC = top.reduce((a, t) => a + co2Of(t), 0);
+        const totH = fleet.reduce((a, t) => a + hoursOf(t), 0);
+        const totC = fleet.reduce((a, t) => a + co2Of(t), 0);
         const byNat = {}, byType = {};
-        top.forEach(t => {
+        fleet.forEach(t => {
           const n = natOf(t.reg);
           byNat[n] = byNat[n] || { n: 0, h: 0, c: 0, regs: [] };
           byNat[n].n += 1; byNat[n].h += hoursOf(t); byNat[n].c += co2Of(t); byNat[n].regs.push(t);
@@ -282,25 +291,29 @@ export default function Aviation() {
           byType[ty].nats[n] = (byType[ty].nats[n] || 0) + 1;
         });
         const flagged = Object.entries(byNat).filter(([k]) => k.includes('⚑'));
-        const pctFlag = top.length ? Math.round(flagged.reduce((a, [, v]) => a + v.n, 0) / top.length * 100) : 0;
+        const pctFlag = fleet.length ? Math.round(flagged.reduce((a, [, v]) => a + v.n, 0) / fleet.length * 100) : 0;
         return (
           <div>
             <div className="kpis">
-              <div className="kpi"><div className="v">{top.length}</div>
-                <div className="l">appareils au top 100 (30 j)</div>
-                <div className="n">parmi les jets captés par la collecte</div></div>
+              <div className="kpi"><div className="v">{fleet.length.toLocaleString('fr-FR')}</div>
+                <div className="l">appareils distincts captés (30 j)</div>
+                <div className="n">toutes les immatriculations vues, pas seulement le top 100</div></div>
               <div className="kpi"><div className="v">{fmtH(totH)} h</div>
-                <div className="l">heures de vol estimées (top 100)</div>
-                <div className="n">instantanés × 30 min</div></div>
+                <div className="l">heures de vol estimées (30 j)</div>
+                <div className="n">instantanés × 30 min, tous appareils captés</div></div>
               <div className="kpi"><div className="v">{fmtH(totC)} t</div>
-                <div className="l">CO₂ estimé (top 100, 30 j)</div>
+                <div className="l">CO₂ estimé (30 j)</div>
                 <div className="n">≈ {Math.round(totC / 9).toLocaleString('fr-FR')} années d’émissions d’un Français moyen (9 t/an)</div></div>
               <div className="kpi"><div className="v">{pctFlag} %</div>
                 <div className="l">sous pavillon de complaisance ⚑</div>
                 <div className="n">Île de Man, Malte, Bermudes, Saint-Marin, Aruba</div></div>
             </div>
-            {!top.length && <div className="warnbox">Statistiques vides pour l’instant — elles se
-              construisent sur le classement 30 jours, donc au fil des collectes automatiques.</div>}
+            <p className="hint">Périmètre : l’intégralité des immatriculations captées par la collecte
+              sur 30 jours glissants ({fleet.length.toLocaleString('fr-FR')} appareils). L’onglet
+              « Les plus actifs » reste, lui, un classement limité aux 100 premiers. Un même appareil
+              peut être capté plusieurs fois ; « appareils » compte les immatriculations distinctes.</p>
+            {!fleet.length && <div className="warnbox">Statistiques vides pour l’instant — elles se
+              construisent au fil des collectes automatiques (jusqu’à 30 jours d’historique).</div>}
             <div className="grid2">
               <div className="card">
                 <h2>Par pavillon (préfixe d’immatriculation)</h2>
@@ -320,7 +333,8 @@ export default function Aviation() {
                         </tr>
                         {expNat === k && (
                           <tr><td colSpan={4} style={{ textAlign: 'left', background: 'var(--surface-2)' }}>
-                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: '4px 0' }}>
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: '4px 0',
+                              maxHeight: 220, overflowY: 'auto' }}>
                               {v.regs.sort((a, b) => (b.snaps ?? b.days) - (a.snaps ?? a.days)).map(t => (
                                 <span key={t.reg} style={{ border: '1px solid var(--hair)', borderRadius: 8, padding: '3px 8px', fontSize: 12, background: 'var(--surface)' }}>
                                   <Star on={has(t.reg)} onClick={() => toggle(t.reg, { type: t.type })} />
