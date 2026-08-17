@@ -70,7 +70,10 @@ function useFavorites() {
   const toggle = (reg, meta = {}) => setFavs(f =>
     f.some(x => x.reg === reg) ? f.filter(x => x.reg !== reg)
       : [...f, { reg, ...meta, addedAt: new Date().toISOString().slice(0, 10) }]);
-  return { favs, has, toggle };
+  const nameOf = reg => favs.find(f => f.reg === reg)?.name || null;
+  const rename = (reg, name) => setFavs(f => f.map(x =>
+    x.reg === reg ? { ...x, name: (name || '').trim() || undefined } : x));
+  return { favs, has, toggle, nameOf, rename };
 }
 const Star = ({ on, onClick }) => (
   <button onClick={e => { e.stopPropagation(); onClick(); }}
@@ -80,6 +83,30 @@ const Star = ({ on, onClick }) => (
     {on ? '★' : '☆'}
   </button>
 );
+/* Surnom d'un favori — affichage à côté de l'immatriculation. */
+const Nick = ({ name }) => name
+  ? <span style={{ color: 'var(--muted)', fontStyle: 'italic', fontWeight: 400 }}> « {name} »</span>
+  : null;
+/* Édition inline du surnom (Entrée = valider, Échap = annuler, vide = retirer). */
+function NickEditor({ name, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState('');
+  if (!editing) return (
+    <button onClick={() => { setVal(name || ''); setEditing(true); }}
+      title={name ? 'Modifier le surnom' : 'Donner un surnom (stocké dans votre navigateur uniquement)'}
+      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)',
+        fontSize: 13, padding: '0 4px' }}>✎</button>
+  );
+  const save = () => { onSave(val); setEditing(false); };
+  return (
+    <input autoFocus value={val} onChange={e => setVal(e.target.value)} maxLength={40}
+      placeholder="surnom (vide = retirer)"
+      onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false); }}
+      onBlur={save}
+      style={{ fontSize: 12.5, padding: '2px 6px', border: '1px solid var(--grid)', borderRadius: 6,
+        background: 'transparent', color: 'var(--ink)', width: 160, marginLeft: 6 }} />
+  );
+}
 const age = ts => {
   if (!ts) return null;
   const m = Math.round((Date.now() - new Date(ts).getTime()) / 60000);
@@ -90,7 +117,7 @@ export default function Aviation() {
   const [tab, setTab] = useState('live');
   const [expNat, setExpNat] = useState(null);
   const [expType, setExpType] = useState(null);
-  const { favs, has, toggle } = useFavorites();
+  const { favs, has, toggle, nameOf, rename } = useFavorites();
   const rows = LIVE.ac || [];
   const byType = {};
   rows.forEach(a => { byType[a.label || a.t] = (byType[a.label || a.t] || 0) + 1; });
@@ -143,7 +170,7 @@ export default function Aviation() {
                 <div key={a.hex + i} style={{ borderBottom: '1px solid var(--grid)', padding: '8px 4px', fontSize: 13 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                     <span><Star on={has(a.r || a.hex)} onClick={() => toggle(a.r || a.hex, { hex: a.hex, type: a.t })} />
-                      <strong>{a.r || a.hex}</strong> <span style={{ color: 'var(--muted)' }}>· {a.label || a.t}</span></span>
+                      <strong>{a.r || a.hex}</strong><Nick name={nameOf(a.r || a.hex)} /> <span style={{ color: 'var(--muted)' }}>· {a.label || a.t}</span></span>
                     <span style={{ color: 'var(--ink-2)', fontVariantNumeric: 'tabular-nums' }}>
                       {a.alt ? `${Math.round(a.alt * 0.3048).toLocaleString('fr-FR')} m` : '—'}
                       {a.gs ? ` · ${Math.round(a.gs * 1.852)} km/h` : ''}
@@ -180,7 +207,29 @@ export default function Aviation() {
         </div>
       </>}
 
-      {tab === 'favs' && (
+      {tab === 'favs' && (() => {
+        const favLive = rows.filter(a => has(a.r || a.hex));
+        return (<>
+        {favs.length > 0 && (
+          <div className="card" style={{ marginBottom: 18 }}>
+            <h2>Carte — vos favoris captés au dernier instantané ({favLive.length}/{favs.length}) · 🌙 zone de nuit</h2>
+            {favLive.length ? (
+              <WorldMap nightAt={LIVE.ts} markers={favLive.map(a => ({
+                lat: a.lat, lon: a.lon,
+                icon: '✈️', rot: ((a.track ?? 45) - 45), size: 24,
+                html: `<strong>★ ${esc(a.r || a.hex)}</strong>` +
+                  `${nameOf(a.r || a.hex) ? ' « ' + esc(nameOf(a.r || a.hex)) + ' »' : ''}` +
+                  ` · ${esc(a.label || a.t)}` +
+                  `<br/>${a.alt ? Math.round(a.alt * 0.3048).toLocaleString('fr-FR') + ' m' : 'altitude n.c.'}` +
+                  `${a.gs ? ' · ' + Math.round(a.gs * 1.852) + ' km/h' : ''}` +
+                  `${a.flight ? '<br/>vol ' + esc(a.flight) : ''}`,
+              }))} />
+            ) : (
+              <p className="hint">Aucun de vos favoris n’était en vol (ou capté par le réseau) au moment
+                du dernier instantané — la carte réapparaîtra dès qu’un favori sera capté.</p>
+            )}
+          </div>
+        )}
         <div className="card">
           <h2>Immatriculations suivies</h2>
           {!favs.length && <p className="hint">Aucun favori — cliquez sur ☆ à côté d’une immatriculation
@@ -192,7 +241,8 @@ export default function Aviation() {
                 const live = rows.find(a => (a.r || a.hex) === f.reg);
                 return (
                   <tr key={f.reg}>
-                    <td style={{ fontWeight: 600 }}>{f.reg}</td>
+                    <td style={{ fontWeight: 600 }}>{f.reg}<Nick name={f.name} />
+                      <NickEditor name={f.name} onSave={v => rename(f.reg, v)} /></td>
                     <td>{TYPE_LABELS[f.type] || f.type || '—'}</td>
                     <td>{live
                       ? `en vol · ${live.alt ? Math.round(live.alt * 0.3048).toLocaleString('fr-FR') + ' m' : 'alt. n.c.'}${live.gs ? ' · ' + Math.round(live.gs * 1.852) + ' km/h' : ''}`
@@ -208,11 +258,12 @@ export default function Aviation() {
               })}
             </tbody>
           </table>
-          <p className="hint">Vos favoris sont stockés uniquement dans ce navigateur (localStorage) —
-            rien n’est transmis au site ni à quiconque. Le statut se rafraîchit à chaque nouvel
-            instantané collecté.</p>
+          <p className="hint">Vos favoris — et leurs surnoms — sont stockés uniquement dans ce navigateur
+            (localStorage), rien n’est transmis au site ni à quiconque. Le statut se rafraîchit à chaque
+            nouvel instantané collecté. ✎ pour donner un surnom (Entrée = valider, vide = retirer).</p>
         </div>
-      )}
+        </>);
+      })()}
 
       {tab === 'stats' && (() => {
         const top = HIST.top || [];
@@ -274,7 +325,7 @@ export default function Aviation() {
                                 <span key={t.reg} style={{ border: '1px solid var(--hair)', borderRadius: 8, padding: '3px 8px', fontSize: 12, background: 'var(--surface)' }}>
                                   <Star on={has(t.reg)} onClick={() => toggle(t.reg, { type: t.type })} />
                                   <a href={`https://www.planespotters.net/search?q=${encodeURIComponent(t.reg)}`}
-                                    target="_blank" rel="noopener" style={{ fontWeight: 600 }}>{t.reg}</a>
+                                    target="_blank" rel="noopener" style={{ fontWeight: 600 }}>{t.reg}</a><Nick name={nameOf(t.reg)} />
                                   <span style={{ color: 'var(--muted)' }}> · {TYPE_LABELS[t.type] || t.type} · {fmtH(hoursOf(t))} h</span>
                                 </span>
                               ))}
@@ -342,7 +393,7 @@ export default function Aviation() {
               {(HIST.top || []).map((t, i) => (
                 <tr key={t.reg}>
                   <td>{i + 1}</td>
-                  <td style={{ fontWeight: 600 }}><Star on={has(t.reg)} onClick={() => toggle(t.reg, { type: t.type })} /> {t.reg}</td>
+                  <td style={{ fontWeight: 600 }}><Star on={has(t.reg)} onClick={() => toggle(t.reg, { type: t.type })} /> {t.reg}<Nick name={nameOf(t.reg)} /></td>
                   <td>{TYPE_LABELS[t.type] || t.type}</td>
                   <td>{fmtH((t.snaps ?? t.days) * SNAP_H)} h</td>
                   <td>{fmtH((t.snaps ?? t.days) * SNAP_H * (CO2_RATE[t.type] || 2.5))}</td>
