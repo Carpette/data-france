@@ -1,37 +1,51 @@
 #!/usr/bin/env node
 /**
- * Collecte nocturne aviation privée (GitHub Actions).
- * Interroge api.adsb.lol par type d'appareil, accumule un compteur d'activité
- * par immatriculation dans src/data/aviation-30j.json (fenêtre glissante 30 jours).
- * Aucune identification de propriétaire : immatriculations et types uniquement.
+ * Collecte aviation privée (GitHub Actions — côté serveur, pas de CORS).
+ * Écrit :
+ *  - src/data/aviation-live.json : dernier instantané avec positions
+ *  - src/data/aviation-30j.json  : jours d'activité par immatriculation (30 j glissants)
+ * Requêtes espacées (l'API 429 en cas de rafale). Aucune identification de propriétaire.
  */
 import { readFile, writeFile } from 'node:fs/promises';
 
-const TYPES = ['GLF6','GLF5','GA6C','GL7T','GLEX','GL5T','FA8X','FA7X','F2TH','F900',
-  'CL35','CL60','C750','C68A','C700','C56X','E55P','E545','PC24'];
-const OUT = new URL('../src/data/aviation-30j.json', import.meta.url);
+const TYPES = [
+  ['GLF6','Gulfstream G650'],['GLF5','Gulfstream G550'],['GA6C','Gulfstream G600'],
+  ['GL7T','Global 7500'],['GLEX','Global Express'],['GL5T','Global 5000'],
+  ['FA8X','Falcon 8X'],['FA7X','Falcon 7X'],['F2TH','Falcon 2000'],['F900','Falcon 900'],
+  ['CL35','Challenger 350'],['CL60','Challenger 600'],['C750','Citation X'],
+  ['C68A','Citation Latitude'],['C700','Citation Longitude'],['C56X','Citation XLS'],
+  ['E55P','Phenom 300'],['E545','Legacy 450/500'],['PC24','Pilatus PC-24'],
+];
+const LIVE = new URL('../src/data/aviation-live.json', import.meta.url);
+const HIST = new URL('../src/data/aviation-30j.json', import.meta.url);
 const today = new Date().toISOString().slice(0, 10);
 
-let db = { days: {} };
-try { db = JSON.parse(await readFile(OUT, 'utf8')); } catch { /* premier run */ }
-
-const seen = {};
-for (const t of TYPES) {
+const ac = [];
+for (const [code, label] of TYPES) {
   try {
-    const r = await fetch(`https://api.adsb.lol/v2/type/${t}`, { headers: { 'user-agent': 'data-france-collect' } });
-    if (!r.ok) continue;
-    for (const a of (await r.json()).ac || []) {
-      const reg = a.r || a.hex;
-      if (reg) seen[reg] = { t, hex: a.hex };
-    }
-    await new Promise(res => setTimeout(res, 800));
-  } catch (e) { console.warn(t, e.message); }
+    const r = await fetch(`https://api.adsb.lol/v2/type/${code}`, { headers: { 'user-agent': 'data-france-collect (observatoire open data)' } });
+    if (r.ok) {
+      for (const a of (await r.json()).ac || []) {
+        ac.push({
+          hex: a.hex, r: a.r || null, t: code, label,
+          flight: a.flight ? String(a.flight).trim() : null,
+          lat: a.lat ?? null, lon: a.lon ?? null,
+          alt: a.alt_baro ?? null, gs: a.gs ?? null, track: a.track ?? null,
+        });
+      }
+    } else console.warn(code, r.status);
+  } catch (e) { console.warn(code, e.message); }
+  await new Promise(res => setTimeout(res, 1500)); // politesse anti-429
 }
+await writeFile(LIVE, JSON.stringify({ ts: new Date().toISOString(), ac }));
+
+let db = { days: {} };
+try { db = JSON.parse(await readFile(HIST, 'utf8')); } catch { /* premier run */ }
+const seen = db.days[today] || {};
+for (const a of ac) { const reg = a.r || a.hex; if (reg) seen[reg] = { t: a.t }; }
 db.days[today] = seen;
-// fenêtre glissante 30 jours
 const cutoff = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
 for (const d of Object.keys(db.days)) if (d < cutoff) delete db.days[d];
-// agrégat : jours d'activité par immatriculation
 const agg = {};
 for (const day of Object.values(db.days))
   for (const [reg, info] of Object.entries(day)) {
@@ -41,5 +55,5 @@ for (const day of Object.values(db.days))
 db.top = Object.entries(agg).sort((a, b) => b[1].days - a[1].days).slice(0, 100)
   .map(([reg, v]) => ({ reg, ...v }));
 db.updated = today;
-await writeFile(OUT, JSON.stringify(db));
-console.log(`aviation-30j.json ✓ ${Object.keys(seen).length} appareils vus aujourd'hui, ${Object.keys(db.days).length} jours en fenêtre`);
+await writeFile(HIST, JSON.stringify(db));
+console.log(`✓ ${ac.length} appareils dans l'instantané, ${db.top.length} au top 30 j`);

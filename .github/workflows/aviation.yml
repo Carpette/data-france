@@ -1,0 +1,20 @@
+name: Collecte aviation privée
+on:
+  schedule:
+    - cron: '43 7,11,15,19 * * *'   # 4 passages/jour
+  workflow_dispatch:
+permissions: { contents: write }
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node scripts/fetch-aviation.mjs
+      - run: |
+          git config user.name "aviation-collect[bot]"
+          git config user.email "actions@github.com"
+          git add src/data/aviation-live.json src/data/aviation-30j.json
+          git diff --cached --quiet || git commit -m "chore(data): instantané aviation"
+          git push
