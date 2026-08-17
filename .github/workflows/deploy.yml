@@ -21,6 +21,7 @@ jobs:
       # commit d'avant la collecte — on veut la tête de main, données comprises.
       - uses: actions/checkout@v4
         with: { ref: main }
+        with: { ref: main }
       - uses: actions/setup-node@v4
         with:
           node-version: 22
