@@ -17,6 +17,7 @@ const summaryOf = a => {
   return es;
 };
 const qtyOf = a => summaryOf(a)?.EmissionsQuantity ?? null;
+const ownersOf = a => [...new Set((a.Owners || []).map(o => o.CompanyName).filter(Boolean))].join(', ');
 const CT = 'https://api.climatetrace.org/v6';
 const esc = s => String(s ?? '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
 const SECTOR_ICON = {
@@ -24,7 +25,23 @@ const SECTOR_ICON = {
   'mineral-extraction': '⛏️', waste: '🗑️', agriculture: '🌾',
   transportation: '🚢', buildings: '🏢', 'fluorinated-gases': '🧪',
 };
+/* En mode « tous secteurs », déduire le picto du sous-secteur de l'installation. */
+const iconFor = (a, selectedSector) => {
+  if (selectedSector) return SECTOR_ICON[selectedSector] || '🏭';
+  const t = `${a.Sector || ''} ${a.AssetType || ''}`.toLowerCase();
+  if (/electricit|power/.test(t)) return '⚡';
+  if (/oil|gas|petro|flar|refin|lng/.test(t)) return '🛢️';
+  if (/mine|mining|coal-|bauxite|copper|quarr/.test(t)) return '⛏️';
+  if (/landfill|waste|wastewater|incinerat/.test(t)) return '🗑️';
+  if (/aviation|airport/.test(t)) return '✈️';
+  if (/shipping|port|maritime/.test(t)) return '🚢';
+  if (/road|truck|vehicle/.test(t)) return '🚚';
+  if (/rice|crop|cattle|enteric|manure|agri/.test(t)) return '🌾';
+  if (/forest|land-use|fire/.test(t)) return '🌲';
+  return '🏭';
+};
 const SECTORS = [
+  ['', 'Tous secteurs confondus'],
   ['power', 'Électricité'], ['fossil-fuel-operations', 'Pétrole & gaz'],
   ['manufacturing', 'Industrie manufacturière'], ['mineral-extraction', 'Mines & extraction'],
   ['transportation', 'Transports'], ['waste', 'Déchets'], ['agriculture', 'Agriculture'],
@@ -52,7 +69,8 @@ export default function Pollueurs() {
   const run = async (c = country, s = sector) => {
     setLoading(true); setErr(null); setSel(null);
     try {
-      const p = new URLSearchParams({ limit: 60, sectors: s });
+      const p = new URLSearchParams({ limit: 60 });
+      if (s) p.set('sectors', s);
       if (c) p.set('countries', c);
       const r = await fetch(`${CT}/assets?${p}`);
       if (!r.ok) throw new Error(`API ${r.status}`);
@@ -91,10 +109,10 @@ export default function Pollueurs() {
         <h2>Carte — survolez une installation</h2>
         <WorldMap markers={(rows || []).map((a, i) => ({
           lat: a.Centroid?.Geometry?.[1], lon: a.Centroid?.Geometry?.[0],
-          icon: SECTOR_ICON[sector] || '🏭',
+          icon: iconFor(a, sector),
           size: i < 5 ? 26 : 19,
           html: `<strong>${esc(a.Name)}</strong><br/>${fmtT(qtyOf(a))} CO₂e/an · ${esc(a.AssetType || a.Sector)}` +
-            (a.Owners?.length ? `<br/>Opérateur : ${esc(a.Owners.map(o => o.CompanyName).filter(Boolean).join(', ') || 'n.c.')}` : ''),
+            (ownersOf(a) ? `<br/>Opérateur : ${esc(ownersOf(a))}` : ''),
         }))} />
       </div>
       <div className="card">
@@ -111,9 +129,9 @@ export default function Pollueurs() {
                 </div>
                 <div style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{fmtT(qtyOf(a))} CO₂e</div>
               </div>
-              {a.Owners?.length > 0 && (
+              {ownersOf(a) && (
                 <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 3 }}>
-                  Opérateur : {a.Owners.map(o => o.CompanyName).filter(Boolean).join(', ') || 'n.c.'}
+                  Opérateur : {ownersOf(a)}
                 </div>
               )}
               {sel === i && (

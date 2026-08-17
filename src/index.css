@@ -112,3 +112,16 @@ table.data th:first-child,table.data td:first-child{text-align:left}
   100% { left: 105vw; }   /* pause hors écran avant le passage suivant */
 }
 @media (prefers-reduced-motion: reduce){ .unicorn-cameo{ display: none; } }
+
+/* Tooltips Leaflet : largeur bornée, retour à la ligne, thème du site */
+.leaflet-tooltip{
+  white-space: normal !important;
+  max-width: 280px;
+  background: var(--surface-2) !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--hair) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 6px 20px rgba(0,0,0,.3) !important;
+  font-size: 12.5px; line-height: 1.45;
+}
+.leaflet-tooltip::before{ display: none; }
