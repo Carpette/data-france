@@ -144,7 +144,8 @@ export default function Pollueurs() {
                       voir sur la carte</a></div>
                   )}
                   <div style={{ marginTop: 4 }}>
-                    Sources : <a href={`https://climatetrace.org/inventory?asset=${a.Id}`} target="_blank" rel="noopener">fiche Climate TRACE</a>
+                    Sources : <a href={`https://api.climatetrace.org/v6/assets/${a.Id}`} target="_blank" rel="noopener">fiche complète (API Climate TRACE, JSON)</a>
+                    {' · '}<a href={`https://climatetrace.org/explore`} target="_blank" rel="noopener">carte Climate TRACE</a>
                     {a.Country === 'FRA' && <> · <a href="https://www.georisques.gouv.fr/risques/registre-des-emissions-polluantes" target="_blank" rel="noopener">registre officiel IREP (rejets déclarés)</a></>}
                   </div>
                 </div>
