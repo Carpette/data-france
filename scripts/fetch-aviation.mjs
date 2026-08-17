@@ -42,18 +42,23 @@ await writeFile(LIVE, JSON.stringify({ ts: new Date().toISOString(), ac }));
 let db = { days: {} };
 try { db = JSON.parse(await readFile(HIST, 'utf8')); } catch { /* premier run */ }
 const seen = db.days[today] || {};
-for (const a of ac) { const reg = a.r || a.hex; if (reg) seen[reg] = { t: a.t }; }
+for (const a of ac) {
+  const reg = a.r || a.hex;
+  if (reg) seen[reg] = { t: a.t, n: (seen[reg]?.n || 0) + 1 }; // n = passages captés ce jour
+}
 db.days[today] = seen;
 const cutoff = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
 for (const d of Object.keys(db.days)) if (d < cutoff) delete db.days[d];
 const agg = {};
 for (const day of Object.values(db.days))
   for (const [reg, info] of Object.entries(day)) {
-    agg[reg] = agg[reg] || { days: 0, type: info.t };
+    agg[reg] = agg[reg] || { days: 0, snaps: 0, type: info.t };
     agg[reg].days += 1;
+    agg[reg].snaps += info.n || 1; // rétro-compatible avec les données déjà collectées
   }
-db.top = Object.entries(agg).sort((a, b) => b[1].days - a[1].days).slice(0, 100)
-  .map(([reg, v]) => ({ reg, ...v }));
+db.top = Object.entries(agg)
+  .sort((a, b) => b[1].snaps - a[1].snaps || b[1].days - a[1].days)
+  .slice(0, 100).map(([reg, v]) => ({ reg, ...v }));
 db.updated = today;
 await writeFile(HIST, JSON.stringify(db));
 console.log(`✓ ${ac.length} appareils dans l'instantané, ${db.top.length} au top 30 j`);
