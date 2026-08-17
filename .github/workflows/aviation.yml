@@ -18,3 +18,13 @@ jobs:
           git add src/data/aviation-live.json src/data/aviation-30j.json
           git diff --cached --quiet || git commit -m "chore(data): instantané aviation"
           git push
+
+  # Le push ci-dessus utilise le GITHUB_TOKEN et ne déclenche donc pas deploy.yml
+  # (garde-fou anti-récursion de GitHub) : on appelle le déploiement explicitement.
+  deploy:
+    needs: collect
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/deploy.yml

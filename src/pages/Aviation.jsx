@@ -7,9 +7,9 @@ import HIST from '../data/aviation-30j.json';
 /**
  * Les API ADS-B (adsb.lol…) n'envoient pas d'en-têtes CORS : impossible de les
  * interroger depuis le navigateur. La collecte se fait donc côté serveur
- * (GitHub Action, scripts/fetch-aviation.mjs) qui commite un instantané —
- * chaque commit redéclenche le déploiement, la page est donc reconstruite
- * avec les données fraîches.
+ * (GitHub Action, scripts/fetch-aviation.mjs) qui commite un instantané. Ce
+ * commit étant poussé avec le GITHUB_TOKEN, il ne redéclenche aucun workflow :
+ * aviation.yml appelle donc deploy.yml explicitement pour republier la page.
  */
 const esc = s => String(s ?? '').replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
 const TYPE_LABELS = {

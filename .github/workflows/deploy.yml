@@ -3,6 +3,9 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # Appelé par les workflows de collecte : un push fait avec le GITHUB_TOKEN ne
+  # redéclenche aucun workflow, les commits de données ne déployaient donc rien.
+  workflow_call:
 permissions:
   contents: read
   pages: write
@@ -14,7 +17,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      # ref explicite : en workflow_call depuis un cron, github.sha pointe sur le
+      # commit d'avant la collecte — on veut la tête de main, données comprises.
       - uses: actions/checkout@v4
+        with: { ref: main }
       - uses: actions/setup-node@v4
         with:
           node-version: 22

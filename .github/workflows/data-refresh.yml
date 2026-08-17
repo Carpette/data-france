@@ -20,3 +20,13 @@ jobs:
           git add -A src/data
           git diff --cached --quiet || git commit -m "chore(data): rafraîchissement mensuel des données canicule"
           git push
+
+  # Même raison que dans aviation.yml : un push signé par le GITHUB_TOKEN ne
+  # déclenche pas deploy.yml, il faut appeler le déploiement à la main.
+  deploy:
+    needs: refresh
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/deploy.yml
