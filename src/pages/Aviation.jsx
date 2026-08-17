@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import ReportButton from '../components/ReportButton.jsx';
 import WorldMap from '../components/WorldMap.jsx';
 import LIVE from '../data/aviation-live.json';
@@ -88,6 +88,8 @@ const age = ts => {
 
 export default function Aviation() {
   const [tab, setTab] = useState('live');
+  const [expNat, setExpNat] = useState(null);
+  const [expType, setExpType] = useState(null);
   const { favs, has, toggle } = useFavorites();
   const rows = LIVE.ac || [];
   const byType = {};
@@ -119,8 +121,8 @@ export default function Aviation() {
 
       {tab === 'live' && <>
         <div className="card" style={{ marginBottom: 18 }}>
-          <h2>Carte — survolez un appareil (orienté selon son cap)</h2>
-          <WorldMap markers={rows.map(a => ({
+          <h2>Carte — survolez un appareil (orienté selon son cap) · 🌙 zone de nuit au moment de l’instantané</h2>
+          <WorldMap nightAt={LIVE.ts} markers={rows.map(a => ({
             lat: a.lat, lon: a.lon,
             icon: '✈️', rot: ((a.track ?? 45) - 45), size: 20,
             html: `<strong>${esc(a.r || a.hex)}</strong> · ${esc(a.label || a.t)}` +
@@ -128,6 +130,10 @@ export default function Aviation() {
               `${a.gs ? ' · ' + Math.round(a.gs * 1.852) + ' km/h' : ''}` +
               `${a.flight ? '<br/>vol ' + esc(a.flight) : ''}`,
           }))} />
+          <p className="hint">La zone assombrie est la nuit à l’heure de la collecte : une carte vide
+            d’avions sur l’Asie à 16 h de Paris reflète d’abord le fuseau horaire. S’y ajoute un second
+            biais, celui de la couverture : le réseau ADS-B communautaire a bien plus de récepteurs en
+            Europe et en Amérique du Nord qu’ailleurs.</p>
         </div>
         <div className="grid2">
           <div className="card">
@@ -217,11 +223,12 @@ export default function Aviation() {
         const byNat = {}, byType = {};
         top.forEach(t => {
           const n = natOf(t.reg);
-          byNat[n] = byNat[n] || { n: 0, h: 0, c: 0 };
-          byNat[n].n += 1; byNat[n].h += hoursOf(t); byNat[n].c += co2Of(t);
+          byNat[n] = byNat[n] || { n: 0, h: 0, c: 0, regs: [] };
+          byNat[n].n += 1; byNat[n].h += hoursOf(t); byNat[n].c += co2Of(t); byNat[n].regs.push(t);
           const ty = TYPE_LABELS[t.type] || t.type;
-          byType[ty] = byType[ty] || { n: 0, h: 0, c: 0 };
+          byType[ty] = byType[ty] || { n: 0, h: 0, c: 0, nats: {} };
           byType[ty].n += 1; byType[ty].h += hoursOf(t); byType[ty].c += co2Of(t);
+          byType[ty].nats[n] = (byType[ty].nats[n] || 0) + 1;
         });
         const flagged = Object.entries(byNat).filter(([k]) => k.includes('⚑'));
         const pctFlag = top.length ? Math.round(flagged.reduce((a, [, v]) => a + v.n, 0) / top.length * 100) : 0;
@@ -246,25 +253,64 @@ export default function Aviation() {
             <div className="grid2">
               <div className="card">
                 <h2>Par pavillon (préfixe d’immatriculation)</h2>
+                <p className="hint" style={{ marginTop: 0, marginBottom: 10 }}>⚑ = pavillon de complaisance
+                  notoire de l’aviation d’affaires (fiscalité avantageuse, opacité de propriété). Le pavillon
+                  dit où l’appareil est immatriculé, pas qui vole dedans. Cliquez sur une ligne pour voir
+                  les immatriculations.</p>
                 <table className="data">
                   <thead><tr><th>Pavillon</th><th>Appareils</th><th>Heures est.</th><th>CO₂ est. (t)</th></tr></thead>
                   <tbody>
                     {Object.entries(byNat).sort((a, b) => b[1].c - a[1].c).map(([k, v]) => (
-                      <tr key={k}><td>{k}</td><td>{v.n}</td><td>{fmtH(v.h)}</td><td>{fmtH(v.c)}</td></tr>
+                      <React.Fragment key={k}>
+                        <tr style={{ cursor: 'pointer' }} onClick={() => setExpNat(expNat === k ? null : k)}>
+                          <td>{expNat === k ? '▾ ' : '▸ '}{k.replace(' ⚑', '')}
+                            {k.includes('⚑') && <span title="Pavillon de complaisance : immatriculation choisie pour la fiscalité et la discrétion" style={{ cursor: 'help' }}> ⚑</span>}</td>
+                          <td>{v.n}</td><td>{fmtH(v.h)}</td><td>{fmtH(v.c)}</td>
+                        </tr>
+                        {expNat === k && (
+                          <tr><td colSpan={4} style={{ textAlign: 'left', background: 'var(--surface-2)' }}>
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: '4px 0' }}>
+                              {v.regs.sort((a, b) => (b.snaps ?? b.days) - (a.snaps ?? a.days)).map(t => (
+                                <span key={t.reg} style={{ border: '1px solid var(--hair)', borderRadius: 8, padding: '3px 8px', fontSize: 12, background: 'var(--surface)' }}>
+                                  <Star on={has(t.reg)} onClick={() => toggle(t.reg, { type: t.type })} />
+                                  <a href={`https://www.planespotters.net/search?q=${encodeURIComponent(t.reg)}`}
+                                    target="_blank" rel="noopener" style={{ fontWeight: 600 }}>{t.reg}</a>
+                                  <span style={{ color: 'var(--muted)' }}> · {TYPE_LABELS[t.type] || t.type} · {fmtH(hoursOf(t))} h</span>
+                                </span>
+                              ))}
+                            </div>
+                          </td></tr>
+                        )}
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>
-                <p className="hint">⚑ = pavillons de complaisance notoires de l’aviation d’affaires
-                  (fiscalité, opacité de propriété). Le pavillon indique où l’appareil est immatriculé,
-                  pas la nationalité de ses occupants.</p>
               </div>
               <div className="card">
                 <h2>Par type d’appareil</h2>
+                <p className="hint" style={{ marginTop: 0, marginBottom: 10 }}>Cliquez sur une ligne
+                  pour voir la répartition par pavillon.</p>
                 <table className="data">
                   <thead><tr><th>Type</th><th>Appareils</th><th>Heures est.</th><th>CO₂ est. (t)</th></tr></thead>
                   <tbody>
                     {Object.entries(byType).sort((a, b) => b[1].c - a[1].c).map(([k, v]) => (
-                      <tr key={k}><td>{k}</td><td>{v.n}</td><td>{fmtH(v.h)}</td><td>{fmtH(v.c)}</td></tr>
+                      <React.Fragment key={k}>
+                        <tr style={{ cursor: 'pointer' }} onClick={() => setExpType(expType === k ? null : k)}>
+                          <td>{expType === k ? '▾ ' : '▸ '}{k}</td>
+                          <td>{v.n}</td><td>{fmtH(v.h)}</td><td>{fmtH(v.c)}</td>
+                        </tr>
+                        {expType === k && (
+                          <tr><td colSpan={4} style={{ textAlign: 'left', background: 'var(--surface-2)' }}>
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: '4px 0' }}>
+                              {Object.entries(v.nats).sort((a, b) => b[1] - a[1]).map(([n, c]) => (
+                                <span key={n} style={{ border: '1px solid var(--hair)', borderRadius: 8, padding: '3px 8px', fontSize: 12, background: 'var(--surface)' }}>
+                                  {n} <strong>{c}</strong>
+                                </span>
+                              ))}
+                            </div>
+                          </td></tr>
+                        )}
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>
