@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import ReportButton from '../components/ReportButton.jsx';
 import WorldMap from '../components/WorldMap.jsx';
 import LIVE from '../data/aviation-live.json';
@@ -119,6 +119,21 @@ export default function Aviation() {
   const [expType, setExpType] = useState(null);
   const { favs, has, toggle, nameOf, rename } = useFavorites();
   const rows = LIVE.ac || [];
+  const [q, setQ] = useState('');
+  /* Index de toutes les immatriculations connues : journal 30 j + instantané en direct. */
+  const fleetIndex = useMemo(() => {
+    const seen = {};
+    Object.values(HIST.days || {}).forEach(day =>
+      Object.entries(day).forEach(([reg, info]) => {
+        seen[reg] = seen[reg] || { reg, type: info.t, days: 0, snaps: 0 };
+        seen[reg].days += 1; seen[reg].snaps += info.n || 1;
+      }));
+    (LIVE.ac || []).forEach(a => {
+      const reg = a.r || a.hex;
+      if (reg && !seen[reg]) seen[reg] = { reg, type: a.t, days: 0, snaps: 0, liveOnly: true };
+    });
+    return Object.values(seen);
+  }, []);
   const byType = {};
   rows.forEach(a => { byType[a.label || a.t] = (byType[a.label || a.t] || 0) + 1; });
 
@@ -230,6 +245,43 @@ export default function Aviation() {
             )}
           </div>
         )}
+        <div className="card" style={{ marginBottom: 18 }}>
+          <h2>Rechercher une immatriculation</h2>
+          <p className="hint" style={{ marginTop: 0 }}>Cherche dans tout ce que la collecte connaît :
+            journal 30 jours complet ({fleetIndex.filter(x => !x.liveOnly).length.toLocaleString('fr-FR')} appareils)
+            + dernier instantané — y compris les appareils au sol ou hors top 100. Étoilez un résultat
+            pour le suivre, puis donnez-lui un surnom (✎) dans le tableau ci-dessous.</p>
+          <input value={q} onChange={e => setQ(e.target.value)} maxLength={12}
+            placeholder="ex. F-HXYZ, N123, 9H… (2 caractères min, tirets ignorés)"
+            style={{ fontSize: 14, padding: '6px 10px', border: '1px solid var(--grid)', borderRadius: 8,
+              background: 'transparent', color: 'var(--ink)', width: 320, maxWidth: '100%' }} />
+          {(() => {
+            const norm = s => (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+            const nq = norm(q);
+            if (nq.length < 2) return null;
+            const res = fleetIndex.filter(x => norm(x.reg).includes(nq))
+              .sort((a, b) => b.snaps - a.snaps);
+            return (
+              <div style={{ marginTop: 10 }}>
+                <p className="hint" style={{ margin: '0 0 6px' }}>{res.length.toLocaleString('fr-FR')} résultat{res.length > 1 ? 's' : ''}
+                  {res.length > 40 ? ' — les 40 plus vus affichés, affinez la recherche' : ''}</p>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', maxHeight: 220, overflowY: 'auto' }}>
+                  {res.slice(0, 40).map(x => (
+                    <span key={x.reg} style={{ border: '1px solid var(--hair)', borderRadius: 8,
+                      padding: '3px 8px', fontSize: 12.5, background: 'var(--surface)' }}>
+                      <Star on={has(x.reg)} onClick={() => toggle(x.reg, { type: x.type })} />
+                      <strong>{x.reg}</strong><Nick name={nameOf(x.reg)} />
+                      <span style={{ color: 'var(--muted)' }}> · {TYPE_LABELS[x.type] || x.type}
+                        {x.liveOnly ? ' · en vol (instantané)' : ` · vu ${x.days} j / ${fmtH(x.snaps * SNAP_H)} h est.`}</span>
+                      {' '}<a href={`https://www.planespotters.net/search?q=${encodeURIComponent(x.reg)}`}
+                        target="_blank" rel="noopener">fiche</a>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
         <div className="card">
           <h2>Immatriculations suivies</h2>
           {!favs.length && <p className="hint">Aucun favori — cliquez sur ☆ à côté d’une immatriculation
@@ -266,16 +318,10 @@ export default function Aviation() {
       })()}
 
       {tab === 'stats' && (() => {
-        /* Statistiques sur TOUS les appareils captés sur 30 j (recalculées depuis le
-           journal quotidien), pas seulement le top 100 — qui reste un simple classement. */
-        const agg = {};
-        Object.values(HIST.days || {}).forEach(day => {
-          Object.entries(day).forEach(([reg, info]) => {
-            agg[reg] = agg[reg] || { reg, days: 0, snaps: 0, type: info.t };
-            agg[reg].days += 1; agg[reg].snaps += info.n || 1;
-          });
-        });
-        const fleet = Object.keys(agg).length ? Object.values(agg) : (HIST.top || []);
+        /* Statistiques sur TOUS les appareils captés sur 30 j (journal quotidien complet),
+           pas seulement le top 100 — qui reste un simple classement. */
+        const journal = fleetIndex.filter(x => !x.liveOnly);
+        const fleet = journal.length ? journal : (HIST.top || []);
         const hoursOf = t => (t.snaps ?? t.days) * SNAP_H;
         const co2Of = t => hoursOf(t) * (CO2_RATE[t.type] || 2.5);
         const totH = fleet.reduce((a, t) => a + hoursOf(t), 0);
