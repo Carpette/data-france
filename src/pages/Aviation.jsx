@@ -120,6 +120,7 @@ export default function Aviation() {
   const { favs, has, toggle, nameOf, rename } = useFavorites();
   const rows = LIVE.ac || [];
   const [q, setQ] = useState('');
+  const [sortT, setSortT] = useState({ k: 'h', d: -1 }); /* tri du classement 30 j */
   /* Index de toutes les immatriculations connues : journal 30 j + instantané en direct. */
   const fleetIndex = useMemo(() => {
     const seen = {};
@@ -438,25 +439,53 @@ export default function Aviation() {
         );
       })()}
 
-      {tab === 'top' && (
+      {tab === 'top' && (() => {
+        /* Classement recalculé sur TOUS les appareils du journal 30 j : le top 100
+           affiché dépend de la colonne de tri (trier par CO₂ ≠ trier par jours). */
+        const journal = fleetIndex.filter(x => !x.liveOnly);
+        const pool = (journal.length ? journal : (HIST.top || [])).map(t => ({
+          ...t,
+          label: TYPE_LABELS[t.type] || t.type,
+          h: (t.snaps ?? t.days) * SNAP_H,
+          c: (t.snaps ?? t.days) * SNAP_H * (CO2_RATE[t.type] || 2.5),
+        }));
+        const { k, d } = sortT;
+        const list = pool.sort((a, b) => {
+          const va = a[k], vb = b[k];
+          const cmp = typeof va === 'string' ? va.localeCompare(vb, 'fr') : (va - vb);
+          return d * cmp || b.h - a.h; /* départage stable par heures */
+        }).slice(0, 100);
+        const Th = ({ ck, label, title }) => (
+          <th onClick={() => setSortT(s => ({ k: ck, d: s.k === ck ? -s.d : (typeof pool[0]?.[ck] === 'string' ? 1 : -1) }))}
+            title={title || 'Trier par cette colonne'}
+            style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
+            {label} <span style={{ color: k === ck ? 'var(--ink)' : 'var(--muted)', fontSize: 10 }}>
+              {k === ck ? (d === -1 ? '▼' : '▲') : '↕'}</span>
+          </th>
+        );
+        return (
         <div className="card">
-          <h2>Immatriculations les plus vues en vol (fenêtre 30 jours)</h2>
-          {!(HIST.top || []).length && <p className="hint">Vide pour l’instant — se remplit au fil des
+          <h2>Les 100 premiers selon la colonne triée (fenêtre 30 jours)</h2>
+          {!pool.length && <p className="hint">Vide pour l’instant — se remplit au fil des
             collectes automatiques ; comptez quelques jours pour un classement parlant.</p>}
           <p className="hint" style={{ marginTop: 0 }}>« Heures de vol estimées » = instantanés en vol ×
             30 min (la cadence de collecte) : capté 5 fois ≈ 2 h 30 de vol. Sous-estime les vols courts
             entre deux collectes et la nuit (pas de collecte). CO₂ : heures × taux par classe d’appareil
-            (~1,3 à 4 t/h), ordre de grandeur ±30 %.</p>
+            (~1,3 à 4 t/h), ordre de grandeur ±30 %. Cliquez un en-tête pour trier : le classement est
+            recalculé sur les {pool.length.toLocaleString('fr-FR')} appareils captés, les 100 premiers
+            du tri sont affichés (re-cliquez pour inverser l’ordre).</p>
           <table className="data">
-            <thead><tr><th>#</th><th>Immatriculation</th><th>Type</th><th>Heures de vol est.</th><th>CO₂ est. (t)</th><th>Jours vus</th><th>Registres</th></tr></thead>
+            <thead><tr><th>#</th><Th ck="reg" label="Immatriculation" /><Th ck="label" label="Type" />
+              <Th ck="h" label="Heures de vol est." /><Th ck="c" label="CO₂ est. (t)" />
+              <Th ck="days" label="Jours vus" /><th>Registres</th></tr></thead>
             <tbody>
-              {(HIST.top || []).map((t, i) => (
+              {list.map((t, i) => (
                 <tr key={t.reg}>
                   <td>{i + 1}</td>
                   <td style={{ fontWeight: 600 }}><Star on={has(t.reg)} onClick={() => toggle(t.reg, { type: t.type })} /> {t.reg}<Nick name={nameOf(t.reg)} /></td>
-                  <td>{TYPE_LABELS[t.type] || t.type}</td>
-                  <td>{fmtH((t.snaps ?? t.days) * SNAP_H)} h</td>
-                  <td>{fmtH((t.snaps ?? t.days) * SNAP_H * (CO2_RATE[t.type] || 2.5))}</td>
+                  <td>{t.label}</td>
+                  <td>{fmtH(t.h)} h</td>
+                  <td>{fmtH(t.c)}</td>
                   <td>{t.days}</td>
                   <td style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                     {regLinks(t.reg).map(([l, u]) => <a key={l} href={u} target="_blank" rel="noopener">{l}</a>)}
@@ -466,7 +495,8 @@ export default function Aviation() {
             </tbody>
           </table>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
