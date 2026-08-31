@@ -47,8 +47,14 @@ for (const a of ac) {
   if (reg) seen[reg] = { t: a.t, n: (seen[reg]?.n || 0) + 1 }; // n = passages captés ce jour
 }
 db.days[today] = seen;
+/* Nombre de collectes réellement exécutées chaque jour : GitHub saute des crons
+   (parfois massivement), la page pondère donc chaque passage par 24 h ÷ collectes
+   du jour au lieu de supposer une cadence fixe de 30 min. */
+db.runs = db.runs || {};
+db.runs[today] = (db.runs[today] || 0) + 1;
 const cutoff = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
 for (const d of Object.keys(db.days)) if (d < cutoff) delete db.days[d];
+for (const d of Object.keys(db.runs)) if (d < cutoff) delete db.runs[d];
 const agg = {};
 for (const day of Object.values(db.days))
   for (const [reg, info] of Object.entries(day)) {

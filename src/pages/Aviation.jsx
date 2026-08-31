@@ -124,14 +124,23 @@ export default function Aviation() {
   /* Index de toutes les immatriculations connues : journal 30 j + instantané en direct. */
   const fleetIndex = useMemo(() => {
     const seen = {};
-    Object.values(HIST.days || {}).forEach(day =>
+    const runsPerDay = HIST.runs || {};
+    Object.entries(HIST.days || {}).forEach(([date, day]) => {
+      /* Poids horaire d'un passage capté ce jour-là : 24 h ÷ collectes réellement
+         exécutées (48 attendues → 30 min). GitHub saute des crons, parfois beaucoup :
+         pondérer par la cadence réelle évite de sous-estimer les jours dégradés.
+         Plafond à 6 h/passage pour borner la variance des jours quasi vides.
+         Jours antérieurs au compteur : cadence nominale supposée (30 min). */
+      const w = Math.min(24 / (runsPerDay[date] || 48), 6);
       Object.entries(day).forEach(([reg, info]) => {
-        seen[reg] = seen[reg] || { reg, type: info.t, days: 0, snaps: 0 };
+        seen[reg] = seen[reg] || { reg, type: info.t, days: 0, snaps: 0, h: 0 };
         seen[reg].days += 1; seen[reg].snaps += info.n || 1;
-      }));
+        seen[reg].h += (info.n || 1) * w;
+      });
+    });
     (LIVE.ac || []).forEach(a => {
       const reg = a.r || a.hex;
-      if (reg && !seen[reg]) seen[reg] = { reg, type: a.t, days: 0, snaps: 0, liveOnly: true };
+      if (reg && !seen[reg]) seen[reg] = { reg, type: a.t, days: 0, snaps: 0, h: 0, liveOnly: true };
     });
     return Object.values(seen);
   }, []);
@@ -273,7 +282,7 @@ export default function Aviation() {
                       <Star on={has(x.reg)} onClick={() => toggle(x.reg, { type: x.type })} />
                       <strong>{x.reg}</strong><Nick name={nameOf(x.reg)} />
                       <span style={{ color: 'var(--muted)' }}> · {TYPE_LABELS[x.type] || x.type}
-                        {x.liveOnly ? ' · en vol (instantané)' : ` · vu ${x.days} j / ${fmtH(x.snaps * SNAP_H)} h est.`}</span>
+                        {x.liveOnly ? ' · en vol (instantané)' : ` · vu ${x.days} j / ${fmtH(x.h ?? x.snaps * SNAP_H)} h est.`}</span>
                       {' '}<a href={`https://www.planespotters.net/search?q=${encodeURIComponent(x.reg)}`}
                         target="_blank" rel="noopener">fiche</a>
                     </span>
@@ -323,7 +332,7 @@ export default function Aviation() {
            pas seulement le top 100 — qui reste un simple classement. */
         const journal = fleetIndex.filter(x => !x.liveOnly);
         const fleet = journal.length ? journal : (HIST.top || []);
-        const hoursOf = t => (t.snaps ?? t.days) * SNAP_H;
+        const hoursOf = t => t.h ?? (t.snaps ?? t.days) * SNAP_H;
         const co2Of = t => hoursOf(t) * (CO2_RATE[t.type] || 2.5);
         const totH = fleet.reduce((a, t) => a + hoursOf(t), 0);
         const totC = fleet.reduce((a, t) => a + co2Of(t), 0);
@@ -347,7 +356,7 @@ export default function Aviation() {
                 <div className="n">toutes les immatriculations vues, pas seulement le top 100</div></div>
               <div className="kpi"><div className="v">{fmtH(totH)} h</div>
                 <div className="l">heures de vol estimées (30 j)</div>
-                <div className="n">instantanés × 30 min, tous appareils captés</div></div>
+                <div className="n">pondérées par la cadence réelle de collecte, tous appareils captés</div></div>
               <div className="kpi"><div className="v">{fmtH(totC)} t</div>
                 <div className="l">CO₂ estimé (30 j)</div>
                 <div className="n">≈ {Math.round(totC / 9).toLocaleString('fr-FR')} années d’émissions d’un Français moyen (9 t/an)</div></div>
@@ -427,7 +436,9 @@ export default function Aviation() {
                   </tbody>
                 </table>
                 <div className="warnbox" style={{ marginTop: 12 }}>
-                  <strong>Méthode (estimations, ±30 %) :</strong> heures = instantanés en vol × 30 min ;
+                  <strong>Méthode (estimations, ±30 %) :</strong> heures = chaque passage capté ×
+                  (24 h ÷ collectes réussies le jour du passage) — soit 30 min à cadence nominale,
+                  davantage quand GitHub saute des collectes (plafond 6 h) ;
                   CO₂ = heures × taux par classe (1,3 t/h pour un PC-24 à 4 t/h pour un Global 7500,
                   d’après les consommations constructeur et 3,16 kg de CO₂ par kg de kérosène).
                   Sous-estimation structurelle : vols de nuit et sauts courts non captés. Statistiques
@@ -446,8 +457,8 @@ export default function Aviation() {
         const pool = (journal.length ? journal : (HIST.top || [])).map(t => ({
           ...t,
           label: TYPE_LABELS[t.type] || t.type,
-          h: (t.snaps ?? t.days) * SNAP_H,
-          c: (t.snaps ?? t.days) * SNAP_H * (CO2_RATE[t.type] || 2.5),
+          h: t.h ?? (t.snaps ?? t.days) * SNAP_H,
+          c: (t.h ?? (t.snaps ?? t.days) * SNAP_H) * (CO2_RATE[t.type] || 2.5),
         }));
         const { k, d } = sortT;
         const list = pool.sort((a, b) => {
@@ -468,9 +479,10 @@ export default function Aviation() {
           <h2>Les 100 premiers selon la colonne triée (fenêtre 30 jours)</h2>
           {!pool.length && <p className="hint">Vide pour l’instant — se remplit au fil des
             collectes automatiques ; comptez quelques jours pour un classement parlant.</p>}
-          <p className="hint" style={{ marginTop: 0 }}>« Heures de vol estimées » = instantanés en vol ×
-            30 min (la cadence de collecte) : capté 5 fois ≈ 2 h 30 de vol. Sous-estime les vols courts
-            entre deux collectes et la nuit (pas de collecte). CO₂ : heures × taux par classe d’appareil
+          <p className="hint" style={{ marginTop: 0 }}>« Heures de vol estimées » : chaque passage capté
+            compte 24 h ÷ nombre de collectes réussies ce jour-là (30 min quand les 48 collectes tournent ;
+            GitHub en saute parfois, le poids s’ajuste, plafonné à 6 h). Sous-estime les vols courts entre
+            deux collectes. CO₂ : heures × taux par classe d’appareil
             (~1,3 à 4 t/h), ordre de grandeur ±30 %. Cliquez un en-tête pour trier : le classement est
             recalculé sur les {pool.length.toLocaleString('fr-FR')} appareils captés, les 100 premiers
             du tri sont affichés (re-cliquez pour inverser l’ordre).</p>
